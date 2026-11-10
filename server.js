@@ -22,7 +22,7 @@ app.use(express.static("public"));
 
 // Base route to confirm the server is alive
 app.get("/", (req, res) => {
-  res.send("After-school app server is running.");
+  res.send("CWhub app server is running.");
 });
 
 async function startServer() {
