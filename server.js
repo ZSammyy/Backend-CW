@@ -33,15 +33,40 @@ async function startServer() {
     // Initialize the database reference after the connection succeeds
     const db = client.db(dbName);
 
-    // Route to fetch all documents from the "lessons" collection
-    app.get("/lessons", async (req, res) => {
+    // Route to fetch all documents from the "Lessons" collection
+    app.get("/Lessons", async (req, res) => {
       try {
-        const lessons = await db.collection("lessons").find({}).toArray();
+        const lessons = await db.collection("Lessons").find({}).toArray();
         res.json(lessons);
       } catch (error) {
         res.status(500).json({ error: error.message });
       }
     });
+
+    app.post("/orders", async (req, res) => {
+      try {
+        const { name, phone, lessonIDs } = req.body;
+        
+        if (!name || !phone || !Array.isArray(lessonIDs) || lessonIDs.length === 0) {
+          return res.status(400).json({ error: "Name, phone, and lessons are required." });
+        
+        }
+        
+        const result = await db.collection("order").insertOne({
+          name,
+          phone,
+          lessonIDs,
+          spaces: lessonIDs.length,
+          createdAt: new Date()
+        });
+        
+        res.status(201).json({ message: "Order saved", orderId: result.insertedId });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Could not save the order." });
+      }
+    });
+
 
     // Start listening for incoming requests
     app.listen(port, () => {
