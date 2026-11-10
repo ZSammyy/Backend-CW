@@ -4,23 +4,22 @@ const cors = require("cors");
 const { MongoClient, ObjectId } = require("mongodb");
 
 const app = express();
-const port = process.env.PORT || 3000; // Uses environment port or defaults to 3000
+const port = process.env.PORT || 3000; 
 const client = new MongoClient(process.env.MONGODB_URI);
 const dbName = "CWhubbase";
 
-app.use(cors()); // Allows cross-origin requests from your frontend
-app.use(express.json()); // Parses incoming JSON payloads in req.body
+app.use(cors()); 
+app.use(express.json()); 
 
-// Logger middleware: prints the timestamp, HTTP method, and requested URL
+// Logger middleware
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-  next(); // Passes control to the next middleware
+  next(); 
 });
 
-// Static file middleware: serves files from the "public" folder
+// Static file middleware
 app.use(express.static("public")); 
 
-// Base route to confirm the server is alive
 app.get("/", (req, res) => {
   res.send("CWhub app server is running.");
 });
@@ -30,10 +29,9 @@ async function startServer() {
     await client.connect();
     console.log("Connected to MongoDB Atlas");
     
-    // Initialize the database reference after the connection succeeds
     const db = client.db(dbName);
 
-    // Route to fetch all documents from the "Lessons" collection
+    // GET: Fetch all lessons (Matches your "Lessons" collection)
     app.get("/lessons", async (req, res) => {
       try {
         const lessons = await db.collection("Lessons").find({}).toArray();
@@ -43,13 +41,13 @@ async function startServer() {
       }
     });
 
+    // POST: Save a new order
     app.post("/orders", async (req, res) => {
       try {
         const { name, phone, lessonIDs } = req.body;
         
         if (!name || !phone || !Array.isArray(lessonIDs) || lessonIDs.length === 0) {
           return res.status(400).json({ error: "Name, phone, and lessons are required." });
-        
         }
         
         const result = await db.collection("order").insertOne({
@@ -66,6 +64,8 @@ async function startServer() {
         res.status(500).json({ error: "Could not save the order." });
       }
     });
+
+    // PUT: Update lesson spaces
     app.put("/lessons/:id", async (req, res) => {
       try {
         if (!ObjectId.isValid(req.params.id)) {
@@ -85,10 +85,9 @@ async function startServer() {
       } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Could not update the lesson." });
-    }
-});
+      }
+    });
 
-    // Start listening for incoming requests
     app.listen(port, () => {
       console.log(`Server running at http://localhost:${port}`);
     });
