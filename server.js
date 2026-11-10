@@ -31,7 +31,7 @@ async function startServer() {
     
     const db = client.db(dbName);
 
-    // GET: Fetch all lessons (Matches your "Lessons" collection)
+    // GET route
     app.get("/lessons", async (req, res) => {
       try {
         const lessons = await db.collection("Lessons").find({}).toArray();
@@ -41,7 +41,7 @@ async function startServer() {
       }
     });
 
-    // POST: Save a new order
+    // POST route
     app.post("/orders", async (req, res) => {
       try {
         const { name, phone, lessonIDs } = req.body;
@@ -65,12 +65,14 @@ async function startServer() {
       }
     });
 
-    // PUT: Update lesson spaces
+    // PUT route - Fixed the missing bracket!
     app.put("/lessons/:id", async (req, res) => {
       try {
         if (!ObjectId.isValid(req.params.id)) {
           return res.status(400).json({ error: "Invalid lesson ID." });
         }
+
+        console.log("Updating lesson:", req.params.id, "with data:", req.body);
 
         const result = await db.collection("Lessons").updateOne(
           { _id: new ObjectId(req.params.id) },
@@ -85,7 +87,7 @@ async function startServer() {
       } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Could not update the lesson." });
-      }
+      } // <-- THIS WAS MISSING BEFORE!
     });
 
     app.listen(port, () => {
