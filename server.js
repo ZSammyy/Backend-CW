@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { MongoClient } = require("mongodb");
+const { MongoClient, ObjectId } = require("mongodb");
 
 const app = express();
 const port = process.env.PORT || 3000; // Uses environment port or defaults to 3000
@@ -34,7 +34,7 @@ async function startServer() {
     const db = client.db(dbName);
 
     // Route to fetch all documents from the "Lessons" collection
-    app.get("/Lessons", async (req, res) => {
+    app.get("/lessons", async (req, res) => {
       try {
         const lessons = await db.collection("Lessons").find({}).toArray();
         res.json(lessons);
@@ -66,7 +66,27 @@ async function startServer() {
         res.status(500).json({ error: "Could not save the order." });
       }
     });
+    app.put("/lessons/:id", async (req, res) => {
+      try {
+        if (!ObjectId.isValid(req.params.id)) {
+          return res.status(400).json({ error: "Invalid lesson ID." });
+        }
 
+        const result = await db.collection("Lessons").updateOne(
+          { _id: new ObjectId(req.params.id) },
+          { $set: req.body }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).json({ error: "Lesson not found." });
+        }
+
+        res.json({ message: "Lesson updated." });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Could not update the lesson." });
+    }
+});
 
     // Start listening for incoming requests
     app.listen(port, () => {
