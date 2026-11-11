@@ -1,6 +1,6 @@
 require("dotenv").config();
-
-const { MongoClient } = require("mongodb");
+const path = require("path");
+const { MongoClient, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
 
@@ -17,15 +17,11 @@ app.use((req, res, next) => {
     console.log(`${req.method} ${req.url}`);
     next();
 });
-app.get("/lessons", async (req, res) => {
-    try {
-        const lessons = await db.collection("Lessons").find({}).toArray();
-        res.json(lessons);
-    } catch (error) {
-        console.error("Could not get lessons:", error);
-        res.status(500).json({ error: "Could not get lessons." });
-    }
-});
+app.use(
+    "/images",
+    express.static(path.join(__dirname, "../Frontend-CW/images"))
+);
+
 
 app.get("/", (req, res) => {
     res.send("CWhub server is running.");
@@ -41,7 +37,16 @@ async function startServer() {
 
         app.get("/lessons", async (req, res) => {
             try {
-                const lessons = await db.collection("Lessons").find({}).toArray();
+                const searchText = String(req.query.search || "").trim().toLowerCase();
+                const allLessons = await db.collection("Lessons").find({}).toArray();
+
+                const lessons = searchText
+                    ? allLessons.filter(lesson =>
+                        [lesson.topic, lesson.location, lesson.price, lesson.space]
+                            .some(value => String(value).toLowerCase().includes(searchText))
+                    )
+                    : allLessons;
+
                 res.json(lessons);
             } catch (error) {
                 console.error("Could not get lessons:", error);
@@ -74,6 +79,61 @@ async function startServer() {
             } catch (error) {
                 console.error("Could not save order:", error);
                 res.status(500).json({ error: "Could not save the order." });
+            }
+        });
+
+        app.put("/lessons/:id", async (req, res) => {
+            try {
+                const { id } = req.params;
+
+                if (!ObjectId.isValid(id)) {
+                    return res.status(400).json({ error: "Invalid lesson ID." });
+                }
+
+                const updates = { ...req.body };
+                delete updates._id;
+
+                if (Object.keys(updates).length === 0) {
+                    return res.status(400).json({ error: "No lesson fields were provided." });
+                }
+
+                const result = await db.collection("Lessons").updateOne(
+                    { _id: new ObjectId(id) },
+                    { $set: updates }
+                );
+
+                if (result.matchedCount === 0) {
+                    return res.status(404).json({ error: "Lesson not found." });
+                }
+
+                res.json({ message: "Lesson updated." });
+            } catch (error) {
+                console.error("Could not update lesson:", error);
+                res.status(500).json({ error: "Could not update the lesson." });
+            }
+        });
+
+        app.get("/enrolment/:lessonid", async (req, res) => {
+            const lessonId = req.params.lessonid;
+
+            if (!ObjectId.isValid(lessonId)) {
+                return res.status(400).json({ error: "Invalid lesson ID." });
+            }
+
+            try {
+                const orders = await db.collection("order")
+                    .find({ lessonIDs: lessonId })
+                    .toArray();
+
+                const enrolment = orders.reduce((total, order) => {
+                    return total +
+                        order.lessonIDs.filter(id => id === lessonId).length;
+                }, 0);
+
+                res.json({ lessonId, enrolment });
+            } catch (error) {
+                console.error("Could not get enrolment:", error);
+                res.status(500).json({ error: "Could not get enrolment." });
             }
         });
 
