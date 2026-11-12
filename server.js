@@ -28,7 +28,7 @@ app.get("/", (req, res) => {
     res.send("CWhub server is running.");
 });
 
-// Get lessons, optionally filtered by search text
+// Get all lessons, with optional search
 app.get("/lessons", async (req, res) => {
     try {
         const searchText = String(req.query.search || "").trim().toLowerCase();
@@ -53,7 +53,9 @@ app.post("/orders", async (req, res) => {
     try {
         const name = String(req.body.name || "").trim();
         const phone = String(req.body.phone || "").trim();
+        const paymentMethod = String(req.body.paymentMethod || "").trim();
         const lessonIDs = req.body.lessonIDs;
+        const allowedPaymentMethods = ["card-demo", "google-pay-demo"];
 
         if (!name || !phone || !Array.isArray(lessonIDs) || lessonIDs.length === 0) {
             return res.status(400).json({
@@ -62,12 +64,21 @@ app.post("/orders", async (req, res) => {
         }
 
         if (!lessonIDs.every(id => ObjectId.isValid(id))) {
-            return res.status(400).json({ error: "One or more lesson IDs are invalid." });
+            return res.status(400).json({
+                error: "One or more lesson IDs are invalid."
+            });
+        }
+
+        if (!allowedPaymentMethods.includes(paymentMethod)) {
+            return res.status(400).json({
+                error: "Choose a payment method."
+            });
         }
 
         const result = await db.collection("order").insertOne({
             name,
             phone,
+            paymentMethod,
             lessonIDs,
             spaces: lessonIDs.length,
             createdAt: new Date()
@@ -83,12 +94,14 @@ app.post("/orders", async (req, res) => {
     }
 });
 
-// Find orders by the checkout phone number
+// Find orders by checkout phone number
 app.get("/orders", async (req, res) => {
     const phone = String(req.query.phone || "").trim();
 
     if (!phone) {
-        return res.status(400).json({ error: "Enter the checkout phone number." });
+        return res.status(400).json({
+            error: "Enter the checkout phone number."
+        });
     }
 
     try {
@@ -116,6 +129,7 @@ app.get("/orders", async (req, res) => {
         const ordersWithLessons = orders.map(order => ({
             _id: order._id,
             createdAt: order.createdAt,
+            paymentMethod: order.paymentMethod,
             lessons: (order.lessonIDs || [])
                 .map(id => lessonsById.get(String(id)))
                 .filter(Boolean)
@@ -128,7 +142,7 @@ app.get("/orders", async (req, res) => {
     }
 });
 
-// Reschedule one lesson in an order
+// Reschedule a lesson in an order
 app.put("/orders/:id/reschedule", async (req, res) => {
     const { id } = req.params;
     const phone = String(req.body.phone || "").trim();
@@ -140,7 +154,9 @@ app.put("/orders/:id/reschedule", async (req, res) => {
         !ObjectId.isValid(oldLessonId) ||
         !ObjectId.isValid(newLessonId)
     ) {
-        return res.status(400).json({ error: "Invalid order or lesson ID." });
+        return res.status(400).json({
+            error: "Invalid order or lesson ID."
+        });
     }
 
     if (!phone) {
@@ -170,7 +186,9 @@ app.put("/orders/:id/reschedule", async (req, res) => {
         );
 
         if (lessonIndex === -1) {
-            return res.status(404).json({ error: "Lesson is not in this order." });
+            return res.status(404).json({
+                error: "Lesson is not in this order."
+            });
         }
 
         const spaceResult = await lessonCollection.updateOne(
@@ -223,11 +241,13 @@ app.put("/orders/:id/reschedule", async (req, res) => {
         res.json({ message: "Order rescheduled successfully." });
     } catch (error) {
         console.error("Could not reschedule order:", error);
-        res.status(500).json({ error: "Could not reschedule the order." });
+        res.status(500).json({
+            error: "Could not reschedule the order."
+        });
     }
 });
 
-// Cancel an order and restore lesson spaces
+// Cancel an order and restore its lesson spaces
 app.delete("/orders/:id", async (req, res) => {
     const { id } = req.params;
     const phone = String(req.body.phone || "").trim();
@@ -261,14 +281,16 @@ app.delete("/orders/:id", async (req, res) => {
             }
         }
 
-        res.json({ message: "Order cancelled and lesson spaces restored." });
+        res.json({
+            message: "Order cancelled and lesson spaces restored."
+        });
     } catch (error) {
         console.error("Could not cancel order:", error);
         res.status(500).json({ error: "Could not cancel the order." });
     }
 });
 
-// Update a lesson, including its available spaces
+// Update lesson spaces
 app.put("/lessons/:id", async (req, res) => {
     const { id } = req.params;
     const space = Number(req.body.space);
@@ -278,7 +300,9 @@ app.put("/lessons/:id", async (req, res) => {
     }
 
     if (!Number.isInteger(space) || space < 0) {
-        return res.status(400).json({ error: "Space must be a non-negative whole number." });
+        return res.status(400).json({
+            error: "Space must be a non-negative whole number."
+        });
     }
 
     try {
@@ -298,7 +322,7 @@ app.put("/lessons/:id", async (req, res) => {
     }
 });
 
-// Get enrolment count for a lesson
+// Get the number of purchased lesson slots
 app.get("/enrolment/:lessonid", async (req, res) => {
     const lessonId = req.params.lessonid;
 
@@ -323,7 +347,7 @@ app.get("/enrolment/:lessonid", async (req, res) => {
     }
 });
 
-// Get saved notifications for a phone number
+// Get notifications for a phone number
 app.get("/notifications", async (req, res) => {
     const phone = String(req.query.phone || "").trim();
 
@@ -363,7 +387,8 @@ app.post("/notifications", async (req, res) => {
             createdAt: new Date()
         };
 
-        const result = await db.collection("notifications").insertOne(notification);
+        const result = await db.collection("notifications")
+            .insertOne(notification);
 
         res.status(201).json({
             ...notification,
@@ -371,7 +396,9 @@ app.post("/notifications", async (req, res) => {
         });
     } catch (error) {
         console.error("Could not save notification:", error);
-        res.status(500).json({ error: "Could not save the notification." });
+        res.status(500).json({
+            error: "Could not save the notification."
+        });
     }
 });
 
@@ -452,7 +479,9 @@ app.delete("/notifications/:id", async (req, res) => {
         res.json({ message: "Notification deleted." });
     } catch (error) {
         console.error("Could not delete notification:", error);
-        res.status(500).json({ error: "Could not delete the notification." });
+        res.status(500).json({
+            error: "Could not delete the notification."
+        });
     }
 });
 
@@ -469,7 +498,9 @@ app.delete("/notifications", async (req, res) => {
         res.json({ message: "Notifications cleared." });
     } catch (error) {
         console.error("Could not clear notifications:", error);
-        res.status(500).json({ error: "Could not clear notifications." });
+        res.status(500).json({
+            error: "Could not clear notifications."
+        });
     }
 });
 
