@@ -81,6 +81,88 @@ async function startServer() {
                 res.status(500).json({ error: "Could not save the order." });
             }
         });
+        app.get("/orders", async (req, res) => {
+            const phone = String(req.query.phone || "").trim();
+
+            if (!phone) {
+                return res.status(400).json({ error: "Enter the checkout phone number." });
+            }
+
+            try {
+                const orders = await db.collection("order")
+                    .find({ phone })
+                    .sort({ createdAt: -1 })
+                    .toArray();
+
+                const lessonIds = [
+                    ...new Set(orders.flatMap(order => order.lessonIDs || []))
+                ]
+                    .filter(id => ObjectId.isValid(id))
+                    .map(id => new ObjectId(id));
+
+                const lessons = lessonIds.length > 0
+                    ? await db.collection("Lessons")
+                        .find({ _id: { $in: lessonIds } })
+                        .toArray()
+                    : [];
+
+                const lessonsById = new Map(
+                    lessons.map(lesson => [String(lesson._id), lesson])
+                );
+
+                const ordersWithLessons = orders.map(order => ({
+                    _id: order._id,
+                    createdAt: order.createdAt,
+                    lessons: (order.lessonIDs || [])
+                        .map(id => lessonsById.get(String(id)))
+                        .filter(Boolean)
+                }));
+
+                res.json(ordersWithLessons);
+            } catch (error) {
+                console.error("Could not get orders:", error);
+                res.status(500).json({ error: "Could not get orders." });
+            }
+        });
+        app.delete("/orders/:id", async (req, res) => {
+            const { id } = req.params;
+            const phone = String(req.body.phone || "").trim();
+
+            if (!ObjectId.isValid(id)) {
+                return res.status(400).json({ error: "Invalid order ID." });
+            }
+
+            if (!phone) {
+                return res.status(400).json({ error: "Phone number is required." });
+            }
+
+            try {
+                const order = await db.collection("order").findOne({
+                    _id: new ObjectId(id),
+                    phone
+                });
+
+                if (!order) {
+                    return res.status(404).json({ error: "Order not found." });
+                }
+
+                await db.collection("order").deleteOne({ _id: order._id });
+
+                for (const lessonId of order.lessonIDs || []) {
+                    if (ObjectId.isValid(lessonId)) {
+                        await db.collection("Lessons").updateOne(
+                            { _id: new ObjectId(lessonId) },
+                            { $inc: { space: 1 } }
+                        );
+                    }
+                }
+
+                res.json({ message: "Order cancelled and lesson spaces restored." });
+            } catch (error) {
+                console.error("Could not cancel order:", error);
+                res.status(500).json({ error: "Could not cancel the order." });
+            }
+        });
 
         app.put("/lessons/:id", async (req, res) => {
             try {
@@ -146,5 +228,3 @@ async function startServer() {
         console.error("MongoDB connection failed:", error.message);
     }
 }
-
-startServer();
