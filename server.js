@@ -124,6 +124,105 @@ async function startServer() {
                 res.status(500).json({ error: "Could not get orders." });
             }
         });
+
+        app.put("/orders/:id/reschedule", async (req, res) => {
+            const { id } = req.params;
+            const phone = String(req.body.phone || "").trim();
+            const oldLessonId = String(req.body.oldLessonId || "");
+            const newLessonId = String(req.body.newLessonId || "");
+
+            if (
+                !ObjectId.isValid(id) ||
+                !ObjectId.isValid(oldLessonId) ||
+                !ObjectId.isValid(newLessonId)
+            ) {
+                return res.status(400).json({ error: "Invalid order or lesson ID." });
+            }
+
+            if (!phone) {
+                return res.status(400).json({ error: "Phone number is required." });
+            }
+
+            if (oldLessonId === newLessonId) {
+                return res.status(400).json({ error: "Choose a different lesson." });
+            }
+
+            try {
+                const orderCollection = db.collection("order");
+                const lessonCollection = db.collection("Lessons");
+
+                const order = await orderCollection.findOne({
+                    _id: new ObjectId(id),
+                    phone
+                });
+
+                if (!order) {
+                    return res.status(404).json({ error: "Order not found." });
+                }
+
+                const lessonIDs = order.lessonIDs || [];
+                const lessonIndex = lessonIDs.findIndex(
+                    lessonId => String(lessonId) === oldLessonId
+                );
+
+                if (lessonIndex === -1) {
+                    return res.status(404).json({ error: "Lesson is not in this order." });
+                }
+
+                const spaceResult = await lessonCollection.updateOne(
+                    {
+                        _id: new ObjectId(newLessonId),
+                        space: { $gt: 0 }
+                    },
+                    { $inc: { space: -1 } }
+                );
+
+                if (spaceResult.matchedCount === 0) {
+                    return res.status(409).json({
+                        error: "The new lesson was not found or has no spaces left."
+                    });
+                }
+
+                const updatedLessonIDs = [...lessonIDs];
+                updatedLessonIDs[lessonIndex] = newLessonId;
+
+                const orderResult = await orderCollection.updateOne(
+                    {
+                        _id: order._id,
+                        phone,
+                        lessonIDs
+                    },
+                    {
+                        $set: {
+                            lessonIDs: updatedLessonIDs,
+                            updatedAt: new Date()
+                        }
+                    }
+                );
+
+                if (orderResult.matchedCount === 0) {
+                    await lessonCollection.updateOne(
+                        { _id: new ObjectId(newLessonId) },
+                        { $inc: { space: 1 } }
+                    );
+
+                    return res.status(409).json({
+                        error: "The order changed. Please try again."
+                    });
+                }
+
+                await lessonCollection.updateOne(
+                    { _id: new ObjectId(oldLessonId) },
+                    { $inc: { space: 1 } }
+                );
+
+                res.json({ message: "Order rescheduled successfully." });
+            } catch (error) {
+                console.error("Could not reschedule order:", error);
+                res.status(500).json({ error: "Could not reschedule the order." });
+            }
+        });
+
         app.delete("/orders/:id", async (req, res) => {
             const { id } = req.params;
             const phone = String(req.body.phone || "").trim();
@@ -228,3 +327,4 @@ async function startServer() {
         console.error("MongoDB connection failed:", error.message);
     }
 }
+startServer();
